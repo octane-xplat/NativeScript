@@ -181,6 +181,9 @@ export function getPlatformBundleDefines(platform: NativeScriptPlatform | undefi
 
 const CORE_PACKAGE_ID = '@nativescript/core';
 const PROVIDER_EXTENSIONS = ['.ts', '.js'] as const;
+// Core also ships plain shared modules as .mjs (e.g. fetch/index.mjs); step 3
+// must see them so they pass through instead of hitting the step-4 error.
+const NORMAL_EXTENSIONS = [...PROVIDER_EXTENSIONS, '.mjs'] as const;
 const SCRIPT_EXTENSIONS = ['.tsx', '.jsx', '.ts', '.js', '.mjs'] as const;
 // Suffixes that mean "an existing platform implementation file" when they end
 // an import specifier — derived from the registered platforms (built-ins
@@ -253,7 +256,7 @@ export function platformProviderPlugin(opts: { platform: NativeScriptPlatform | 
 	const providerCandidates = (id: string): string[] => (providerRoot ? suffixes.flatMap((suffix) => PROVIDER_EXTENSIONS.map((ext) => `${providerRoot}/${id}${suffix}${ext}`)) : []);
 
 	/** The core files a module id resolves to without provider/reuse. */
-	const normalCandidates = (id: string): string[] => [...suffixes.flatMap((suffix) => PROVIDER_EXTENSIONS.map((ext) => `${coreRoot}/${id}${suffix}${ext}`)), ...PROVIDER_EXTENSIONS.map((ext) => `${coreRoot}/${id}${ext}`)];
+	const normalCandidates = (id: string): string[] => [...suffixes.flatMap((suffix) => PROVIDER_EXTENSIONS.map((ext) => `${coreRoot}/${id}${suffix}${ext}`)), ...NORMAL_EXTENSIONS.map((ext) => `${coreRoot}/${id}${ext}`)];
 
 	/**
 	 * Core module-id candidates for an import: `<rel>` and, when `<rel>` is a

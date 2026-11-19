@@ -197,6 +197,12 @@ describe('platformProviderPlugin', () => {
 		expect(resolveWith('@nativescript/core/globals')).toBeNull();
 	});
 
+	it('passes through a shared core module that exists only as .mjs (step 3)', () => {
+		// fetch/index.mjs has no .ts/.js sibling — step 3 must see it so Vite
+		// resolves it normally instead of hitting the step-4 error.
+		expect(resolveWith('@nativescript/core/fetch')).toBeNull();
+	});
+
 	it('skips the provider when the importer IS the provider file for that id', () => {
 		const providerFile = join(PROVIDER_ROOT, 'extended/index.testos.ts');
 		// provider file imports the core module it shadows → step 1 skipped,
