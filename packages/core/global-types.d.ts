@@ -141,6 +141,22 @@ declare const __ANDROID__: boolean;
 declare const __IOS__: boolean;
 declare const __VISIONOS__: boolean;
 declare const __APPLE__: boolean;
+/**
+ * Behavior capabilities declared by the active platform (see
+ * `@nativescript/vite/platforms`). Shared code branches on these where the
+ * intent is a behavior, not a platform identity — e.g. `__APPLE__` in
+ * `affectsLayout` metadata meant "this property's changes need a layout
+ * pass", which a new platform can answer without inheriting UIKit
+ * assumptions.
+ */
+declare const __NS_CAP__: {
+	/** Style/text property changes request a layout pass (was `__APPLE__`). */
+	textAffectsLayout: boolean;
+	/** View/layout property changes request a layout pass (was `__APPLE__`). */
+	viewPropertyAffectsLayout: boolean;
+	/** `text`/`formattedText` content changes request a layout pass (was `__ANDROID__`). */
+	textChangeAffectsLayout: boolean;
+} & Record<string, boolean>;
 
 declare function setTimeout(callback: (...args: any[]) => void, ms: number, ...args: any[]): number;
 declare function clearTimeout(timeoutId: number): void;

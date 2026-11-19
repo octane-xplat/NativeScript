@@ -13,6 +13,12 @@ global.__ANDROID__ = false;
 global.__IOS__ = true;
 global.__VISIONOS__ = false;
 global.__APPLE__ = true;
+// Capability values matching the iOS defaults the bundler emits (tests run as iOS).
+global.__NS_CAP__ = {
+	textAffectsLayout: true,
+	viewPropertyAffectsLayout: true,
+	textChangeAffectsLayout: false,
+};
 global.__COMMONJS__ = false;
 // Injected by the bundler in a real app; the css-tree parser is the default.
 global.__CSS_PARSER__ = 'css-tree';
