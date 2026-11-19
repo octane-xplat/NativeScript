@@ -13,6 +13,8 @@ import { setAppCssState } from './app-css-state.js';
 import { createAppCssRefresher } from './app-css-refresh.js';
 import { rewritePlatformCssImports } from './css-platform-plugin.js';
 import { buildGlobalSeedStatements, getRuntimeSeedValues } from './global-defines.js';
+import type { Platform } from './platform-types.js';
+import type { NativeScriptPlatform } from './platforms.js';
 import { BUNDLE_CSS_AST_SENTINEL, inlineBundleCss } from './bundle-css.js';
 // Switched to runtime modules to avoid fragile string injection and enable TS checks
 const projectRoot = getProjectRootPath();
@@ -102,7 +104,7 @@ const XHR_POLYFILL_RESOLVED = '\0' + XHR_POLYFILL_VIRTUAL_ID;
 const DEFINES_SEED_VIRTUAL_ID = 'virtual:ns-defines-seed';
 const DEFINES_SEED_RESOLVED = '\0' + DEFINES_SEED_VIRTUAL_ID;
 
-export function mainEntryPlugin(opts: { platform: 'ios' | 'android' | 'visionos'; isDevMode: boolean; verbose: boolean; hmrActive: boolean; useHttps: boolean; flavor?: string }) {
+export function mainEntryPlugin(opts: { platform: Platform; platforms?: NativeScriptPlatform[]; isDevMode: boolean; verbose: boolean; hmrActive: boolean; useHttps: boolean; flavor?: string }) {
 	let resolvedConfig: ResolvedConfig;
 	// Prefer the flavor the active config DECLARES (threaded from baseConfig)
 	// over deps-based detection: in workspaces whose app package.json doesn't
@@ -389,7 +391,7 @@ export function mainEntryPlugin(opts: { platform: 'ios' | 'android' | 'visionos'
 				// app-root paths, overlay knobs). Vite's define substitution
 				// never reaches those raw-served files, so anything they read must be
 				// planted on globalThis here — see getRuntimeSeedValues for the rule.
-				const seedLines = buildGlobalSeedStatements(getRuntimeSeedValues({ platform: opts.platform, isDevMode: opts.isDevMode, verbose: opts.verbose, flavor: effectiveFlavor, isCI: !!process.env.CI }));
+				const seedLines = buildGlobalSeedStatements(getRuntimeSeedValues({ platform: opts.platform, platforms: opts.platforms, isDevMode: opts.isDevMode, verbose: opts.verbose, flavor: effectiveFlavor, isCI: !!process.env.CI }));
 				return {
 					code: seedLines.join('\n') + '\n',
 					moduleType: 'js',

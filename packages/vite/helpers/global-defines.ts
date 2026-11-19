@@ -1,5 +1,6 @@
 import { getProjectAppPath, getProjectAppVirtualPath } from './utils.js';
 import { getClientStrategyDevicePath } from '../hmr/framework-flavors.js';
+import { getPlatform, getPlatformDefineValues, type NativeScriptPlatform } from './platforms.js';
 
 const APP_ROOT_DIR = getProjectAppPath();
 const APP_ROOT_VIRTUAL = getProjectAppVirtualPath();
@@ -39,6 +40,7 @@ export interface RuntimeDefineValues {
 	__IOS__: boolean;
 	__VISIONOS__: boolean;
 	__APPLE__: boolean;
+	__NS_CAP__: Record<string, boolean>;
 	__COMMONJS__: boolean;
 	__NS_WEBPACK__: boolean;
 	__NS_ENV_VERBOSE__: boolean;
@@ -48,14 +50,15 @@ export interface RuntimeDefineValues {
 	__TEST__: boolean;
 }
 
-export function getRuntimeDefineValues(opts: { platform?: string; isDevMode: boolean; verbose: boolean }): RuntimeDefineValues {
-	const platform = opts.platform || '';
+export function getRuntimeDefineValues(opts: { platform?: string; platforms?: NativeScriptPlatform[]; isDevMode: boolean; verbose: boolean }): RuntimeDefineValues {
+	const defines = getPlatformDefineValues(getPlatform(opts.platform, opts.platforms));
 	return {
 		__DEV__: !!opts.isDevMode,
-		__ANDROID__: platform === 'android',
-		__IOS__: platform === 'ios',
-		__VISIONOS__: platform === 'visionos',
-		__APPLE__: platform === 'ios' || platform === 'visionos',
+		__ANDROID__: defines.__ANDROID__,
+		__IOS__: defines.__IOS__,
+		__VISIONOS__: defines.__VISIONOS__,
+		__APPLE__: defines.__APPLE__,
+		__NS_CAP__: defines.capabilities,
 		__COMMONJS__: false,
 		__NS_WEBPACK__: false,
 		__NS_ENV_VERBOSE__: !!opts.verbose,
@@ -78,7 +81,7 @@ export function getRuntimeDefineValues(opts: { platform?: string; isDevMode: boo
  * broke 'app/'-rooted projects. Rule: add a define consumed by client code →
  * add it HERE, and read it with a `globalThis` fallback at the consumer.
  */
-export function getRuntimeSeedValues(opts: { platform?: string; isDevMode: boolean; verbose: boolean; flavor: string; isCI?: boolean }): Record<string, unknown> {
+export function getRuntimeSeedValues(opts: { platform?: string; platforms?: NativeScriptPlatform[]; isDevMode: boolean; verbose: boolean; flavor: string; isCI?: boolean }): Record<string, unknown> {
 	const values = getRuntimeDefineValues(opts);
 	return {
 		...values,
@@ -90,8 +93,11 @@ export function getRuntimeSeedValues(opts: { platform?: string; isDevMode: boole
 		// behave identically under HMR. globalThis-only on purpose: these MUST
 		// NOT become per-module `const` shims (buildDefineShimStatements), or
 		// they'd collide with `import { isIOS } from '@nativescript/core'`.
+		// isIOS mirrors core/platform/common.ts (`__IOS__ || __VISIONOS__`) —
+		// NOT `__APPLE__`, which a non-iOS Apple platform (e.g. an external
+		// family:'apple' platform) sets without being iOS.
 		isAndroid: values.__ANDROID__,
-		isIOS: values.__APPLE__,
+		isIOS: values.__IOS__ || values.__VISIONOS__,
 		// Runtime flavor for the raw-served HMR client's TARGET_FLAVOR resolution.
 		__NS_TARGET_FLAVOR__: opts.flavor,
 		// Device path of a registered (non built-in) flavor's client strategy;
@@ -136,7 +142,7 @@ export function buildGuardedDefineSeedStatement(values: RuntimeDefineValues): st
 	// text substitution, so the real globals must exist for member-access reads.
 	// Guarded separately from `__IOS__` because a bundle seed may already have
 	// planted one set but not the other.
-	return `if (globalThis.__IOS__ === undefined && globalThis.__ANDROID__ === undefined) { globalThis.__ANDROID__ = ${values.__ANDROID__}; globalThis.__IOS__ = ${values.__IOS__}; globalThis.__VISIONOS__ = ${values.__VISIONOS__}; globalThis.__APPLE__ = ${values.__APPLE__}; }\nif (globalThis.isIOS === undefined && globalThis.isAndroid === undefined) { globalThis.isAndroid = ${values.__ANDROID__}; globalThis.isIOS = ${values.__APPLE__}; }\nif (globalThis.__DEV__ === undefined) { globalThis.__DEV__ = ${values.__DEV__}; }`;
+	return `if (globalThis.__IOS__ === undefined && globalThis.__ANDROID__ === undefined) { globalThis.__ANDROID__ = ${values.__ANDROID__}; globalThis.__IOS__ = ${values.__IOS__}; globalThis.__VISIONOS__ = ${values.__VISIONOS__}; globalThis.__APPLE__ = ${values.__APPLE__}; }\nif (globalThis.isIOS === undefined && globalThis.isAndroid === undefined) { globalThis.isAndroid = ${values.__ANDROID__}; globalThis.isIOS = ${values.__IOS__ || values.__VISIONOS__}; }\nif (globalThis.__DEV__ === undefined) { globalThis.__DEV__ = ${values.__DEV__}; }\nif (globalThis.__NS_CAP__ === undefined) { globalThis.__NS_CAP__ = ${JSON.stringify(values.__NS_CAP__)}; }`;
 }
 
 /**
@@ -235,16 +241,20 @@ export function buildUserDefineShimStatements(excludeKeys: Iterable<string> = []
 	return userDefineEntries.filter(([key]) => !exclude.has(key)).map(([key, expr]) => `const ${key} = globalThis.${key} !== undefined ? globalThis.${key} : (${expr});`);
 }
 
-export function getGlobalDefines(opts: { platform: string; targetMode: string; verbose: boolean; flavor: string; isCI?: boolean }) {
-	const values = getRuntimeDefineValues({ platform: opts.platform, isDevMode: opts.targetMode === 'development', verbose: opts.verbose });
+export function getGlobalDefines(opts: { platform: string; platforms?: NativeScriptPlatform[]; targetMode: string; verbose: boolean; flavor: string; isCI?: boolean }) {
+	const values = getRuntimeDefineValues({ platform: opts.platform, platforms: opts.platforms, isDevMode: opts.targetMode === 'development', verbose: opts.verbose });
 	return {
 		// Define platform flags for runtime checks
 		__ANDROID__: JSON.stringify(values.__ANDROID__),
 		__IOS__: JSON.stringify(values.__IOS__),
 		__VISIONOS__: JSON.stringify(values.__VISIONOS__),
 		__APPLE__: JSON.stringify(values.__APPLE__),
+		// One define per declared capability so `__NS_CAP__.<cap>` substitutes
+		// to a constant in bundles; the bare object covers whole-object reads.
+		...Object.fromEntries(Object.entries(values.__NS_CAP__).map(([cap, value]) => [`__NS_CAP__.${cap}`, JSON.stringify(value)])),
+		__NS_CAP__: JSON.stringify(values.__NS_CAP__),
 		'global.isAndroid': JSON.stringify(values.__ANDROID__),
-		'global.isIOS': JSON.stringify(values.__APPLE__),
+		'global.isIOS': JSON.stringify(values.__IOS__ || values.__VISIONOS__),
 		__DEV__: JSON.stringify(values.__DEV__),
 		__COMMONJS__: values.__COMMONJS__,
 		__NS_WEBPACK__: values.__NS_WEBPACK__,

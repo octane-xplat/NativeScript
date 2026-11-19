@@ -89,7 +89,12 @@
 		"./hmr/shared/runtime/hooks": "./hmr/shared/runtime/hooks.js",
 		"./hmr/shared/runtime/hooks.js": "./hmr/shared/runtime/hooks.js",
 		"./runtime/core-aliases-early": "./runtime/core-aliases-early.js",
-		"./runtime/core-aliases-early.js": "./runtime/core-aliases-early.js"
+		"./runtime/core-aliases-early.js": "./runtime/core-aliases-early.js",
+		"./platforms": {
+			"types": "./helpers/platforms.d.ts",
+			"import": "./helpers/platforms.js",
+			"default": "./helpers/platforms.js"
+		}
 	},
 	"bin": {
 		"nativescript-vite": "./bin/cli.cjs"

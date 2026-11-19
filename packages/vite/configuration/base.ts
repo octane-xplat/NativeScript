@@ -32,6 +32,7 @@ import { resolveVerboseFlag, createFilteredViteLogger } from '../helpers/logging
 import { externalConfigsPlugin } from '../helpers/external-configs.js';
 import { getHMRPlugins } from '../hmr/server/index.js';
 import type { Platform } from '../helpers/platform-types.js';
+import { builtinPlatforms, getPlatform, getPlatformExtensions, platformProviderPlugin, type NativeScriptPlatform } from '../helpers/platforms.js';
 import { packagePlatformResolverPlugin } from '../helpers/package-platform-aliases.js';
 import { findPackageInNodeModules } from '../helpers/module-resolution.js';
 import { createPlatformCssPlugin } from '../helpers/css-platform-plugin.js';
@@ -87,7 +88,7 @@ if (themePkgDir && existsSync(themePkgDir)) {
 	THEME_CORE_ROOT = normalizeModuleId(themePkgDir);
 }
 
-export const baseConfig = ({ mode, flavor }: { mode: string; flavor?: string }): UserConfig => {
+export const baseConfig = ({ mode, flavor, platforms }: { mode: string; flavor?: string; platforms?: NativeScriptPlatform[] }): UserConfig => {
 	const targetMode = mode === 'development' ? 'development' : 'production';
 
 	const cliFlags = getCliFlags();
@@ -103,6 +104,13 @@ export const baseConfig = ({ mode, flavor }: { mode: string; flavor?: string }):
 		platform = 'ios';
 	} else if (cliFlags.visionos) {
 		platform = 'visionos';
+	}
+
+	// Resolve the platform descriptor: built-ins describe themselves, external
+	// platforms come from the `platforms` config option.
+	const activePlatform = getPlatform(platform, platforms);
+	if (hmrActive && activePlatform && !builtinPlatforms[activePlatform.name as keyof typeof builtinPlatforms]) {
+		throw new Error(`@nativescript/vite: external platform "${activePlatform.name}" is not supported under HMR — build without --env.hmr (or --no-hmr) instead.`);
 	}
 	if (verbose) {
 		console.log('--------------');
@@ -137,22 +145,7 @@ export const baseConfig = ({ mode, flavor }: { mode: string; flavor?: string }):
 
 	// Common resolve configuration for both main and worker builds
 	// Build platform-aware extension preference order and exclude the opposite platform
-	const platformExtensions = (() => {
-		const base = ['.tsx', '.jsx', '.ts', '.js'] as const;
-		const exts: string[] = [];
-		if (platform === 'android') {
-			exts.push('.android.tsx', '.tsx', '.android.jsx', '.jsx', '.android.ts', '.ts', '.android.js', '.js');
-		} else if (platform === 'ios' || platform === 'visionos') {
-			// Treat visionOS like iOS for file resolution
-			exts.push('.ios.tsx', '.tsx', '.ios.jsx', '.jsx', '.ios.ts', '.ts', '.ios.js', '.js');
-		} else {
-			// Fallback: no platform-specific preference
-			exts.push(...base);
-		}
-		// Always allow these last
-		exts.push('.mjs', '.json');
-		return exts;
-	})();
+	const platformExtensions = getPlatformExtensions(activePlatform);
 
 	// Dynamic aliases for nativescript-theme-core generic theme filenames
 	// TODO: move to per-project basis based on usage
@@ -216,6 +209,7 @@ export const baseConfig = ({ mode, flavor }: { mode: string; flavor?: string }):
 	// Common define configuration for both main and worker builds
 	const defineConfig = getGlobalDefines({
 		platform,
+		platforms,
 		targetMode,
 		verbose,
 		flavor,
@@ -378,7 +372,9 @@ export const baseConfig = ({ mode, flavor }: { mode: string; flavor?: string }):
 				: undefined,
 			// Vue HMR plugins for development mode
 			// HMR plugins (source streaming replaces prior exploded source plugin when enabled)
-			...(hmrActive ? [...getHMRPlugins({ platform, flavor, verbose })] : []),
+			// External platforms are rejected under HMR above, so `platform` is a
+			// built-in whenever this branch runs.
+			...(hmrActive ? [...getHMRPlugins({ platform: platform as 'ios' | 'android' | 'visionos', flavor, verbose })] : []),
 			// TODO: make flavor plugins dynamic
 			// ...flavorPlugins,
 			...commonjsPlugins,
@@ -391,6 +387,10 @@ export const baseConfig = ({ mode, flavor }: { mode: string; flavor?: string }):
 			// fail static resolution under Rolldown (see helper for full rationale).
 			nativescriptWorkerLoaderStubPlugin(),
 			nsConfigAsJsonPlugin(),
+			// External platform implementations of core modules (provider dir /
+			// reuse map). No-ops for platforms without either — built-ins
+			// resolve through the suffix extensions and alias as before.
+			platformProviderPlugin({ platform: activePlatform, coreRoot: NS_CORE_ROOT, verbose }),
 			NativeScriptPlugin({ platform }),
 			// XML-driven flavors: provide the virtual UI-registration module the
 			// entry imports (see main-entry.ts). Registered HERE, from the same
@@ -400,7 +400,7 @@ export const baseConfig = ({ mode, flavor }: { mode: string; flavor?: string }):
 			// the framework package (hoisted to the workspace root).
 			...(flavor === 'typescript' || flavor === 'javascript' ? [createUiRegistrationPlugin(flavor as 'typescript' | 'javascript')] : []),
 			// Ensure globals and Android activity are included early via virtual entry
-			mainEntryPlugin({ platform, isDevMode, verbose, hmrActive, useHttps, flavor }),
+			mainEntryPlugin({ platform, platforms, isDevMode, verbose, hmrActive, useHttps, flavor }),
 			// Handle custom Android Activity/Application components (auto-detected or configured)
 			appComponentsPlugin({ platform, verbose }),
 			dynamicImportPlugin(),

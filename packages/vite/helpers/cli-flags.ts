@@ -26,6 +26,9 @@ function pickPlatform(src: Record<string, unknown> | null | undefined): Platform
 	if (src.android) return 'android';
 	if (src.visionos) return 'visionos';
 	if (src.ios) return 'ios';
+	// `--env.platform=<name>` selects a built-in or an externally registered
+	// platform (baseConfig's `platforms` option resolves the descriptor).
+	if (typeof src.platform === 'string' && src.platform) return src.platform;
 	return undefined;
 }
 
