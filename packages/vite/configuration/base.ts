@@ -109,6 +109,10 @@ export const baseConfig = ({ mode, flavor, platforms }: { mode: string; flavor?:
 	// Resolve the platform descriptor: built-ins describe themselves, external
 	// platforms come from the `platforms` config option.
 	const activePlatform = getPlatform(platform, platforms);
+	if (platform && !activePlatform) {
+		const known = [...Object.keys(builtinPlatforms), ...(platforms ?? []).map((registered) => registered.name)];
+		throw new Error(`@nativescript/vite: unknown platform "${platform}" (known: ${known.join(', ')})`);
+	}
 	if (hmrActive && activePlatform && !builtinPlatforms[activePlatform.name as keyof typeof builtinPlatforms]) {
 		throw new Error(`@nativescript/vite: external platform "${activePlatform.name}" is not supported under HMR — build without --env.hmr (or --no-hmr) instead.`);
 	}

@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { builtinPlatforms, getPlatform, getPlatformExtensions, getPlatformDefineValues, platformProviderPlugin, type NativeScriptPlatform } from './platforms.js';
+import { build } from 'vite';
+import { builtinPlatforms, getPlatform, getPlatformExtensions, getPlatformBundleDefines, getPlatformDefineValues, platformProviderPlugin, type NativeScriptPlatform } from './platforms.js';
 import { getGlobalDefines, getRuntimeDefineValues, getRuntimeSeedValues, buildGlobalSeedStatements, buildGuardedDefineSeedStatement, buildDefineShimStatements } from './global-defines.js';
+// webpack5 ships the same tables for its DefinePlugin — assert parity so the
+// two bundlers can never drift on built-in capability values.
+import { platformCapabilities } from '../../webpack5/src/helpers/platform-capabilities.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CORE_ROOT = join(here, 'fixtures', 'platform-core');
@@ -17,8 +22,7 @@ const testos: NativeScriptPlatform = {
 	provider: { root: PROVIDER_ROOT },
 	reuse: { 'timer/index': '.ios' },
 	capabilities: {
-		textAffectsLayout: true,
-		viewPropertyAffectsLayout: false,
+		propertyChangesRequestLayout: true,
 		textChangeAffectsLayout: true,
 	},
 };
@@ -82,8 +86,7 @@ describe('capabilities in defines and seeds', () => {
 	const defines = getGlobalDefines({ platform: 'testos', platforms: [testos], targetMode: 'production', verbose: false, flavor: 'typescript' }) as Record<string, unknown>;
 
 	it('emits one dotted define per capability', () => {
-		expect(defines['__NS_CAP__.textAffectsLayout']).toBe('true');
-		expect(defines['__NS_CAP__.viewPropertyAffectsLayout']).toBe('false');
+		expect(defines['__NS_CAP__.propertyChangesRequestLayout']).toBe('true');
 		expect(defines['__NS_CAP__.textChangeAffectsLayout']).toBe('true');
 	});
 
@@ -210,9 +213,119 @@ describe('platformProviderPlugin', () => {
 		expect(resolveWith('lodash')).toBeNull();
 	});
 
+	it('never rewrites an import that explicitly names a platform file', () => {
+		// A core file importing its platform sibling means that file — the
+		// suffix is part of the specifier, not a resolution hint.
+		expect(resolveWith('./dep.ios', join(CORE_ROOT, 'shared/index.ts'))).toBeNull();
+		expect(resolveWith('./dep.ios.ts', join(CORE_ROOT, 'shared/index.ts'))).toBeNull();
+		expect(resolveWith('@nativescript/core/timer/index.ios', join(CORE_ROOT, 'x.ts'))).toBeNull();
+		expect(resolveWith('@nativescript/core/timer/index.ios.ts')).toBeNull();
+		// The active platform's own suffix gets the same treatment.
+		expect(resolveWith('./index.testos.ts', join(CORE_ROOT, 'ui/label/index.ts'))).toBeNull();
+	});
+
+	it('passes non-script imports through without resolving or erroring', () => {
+		expect(resolveWith('@nativescript/core/ui/label/styles.css', join(CORE_ROOT, 'ui/label/index.ts'))).toBeNull();
+		expect(resolveWith('./data.json', join(CORE_ROOT, 'globals/index.ts'))).toBeNull();
+		expect(resolveWith('./page.xml', join(CORE_ROOT, 'ui/label/index.ts'))).toBeNull();
+		// Even a nonexistent non-script file inside core is not our error.
+		expect(resolveWith('@nativescript/core/i-dont-exist.css')).toBeNull();
+	});
+
 	it('no-ops for platforms without provider or reuse', () => {
 		const plugin = platformProviderPlugin({ platform: builtinPlatforms.ios, coreRoot: CORE_ROOT });
 		const resolveId = plugin.resolveId as (source: string, importer?: string) => string | null;
 		expect(resolveId.call({ error: (m: string) => m }, '@nativescript/core/ui/label', join(CORE_ROOT, 'ui/x.ts'))).toBeNull();
+	});
+});
+
+// ── getPlatformBundleDefines ─────────────────────────────────────────────────
+
+describe('getPlatformBundleDefines', () => {
+	it('emits the platform flags, capability defines, and legacy is* members', () => {
+		expect(getPlatformBundleDefines(testos)).toEqual({
+			__ANDROID__: 'false',
+			__IOS__: 'false',
+			__VISIONOS__: 'false',
+			__APPLE__: 'true',
+			'__NS_CAP__.propertyChangesRequestLayout': 'true',
+			'__NS_CAP__.textChangeAffectsLayout': 'true',
+			__NS_CAP__: JSON.stringify(testos.capabilities),
+			'global.isAndroid': 'false',
+			'global.isIOS': 'false',
+		});
+	});
+
+	it('matches the built-in expressions (isIOS includes visionos)', () => {
+		expect(getPlatformBundleDefines(builtinPlatforms.visionos)).toMatchObject({ __VISIONOS__: 'true', __APPLE__: 'true', 'global.isIOS': 'true' });
+		expect(getPlatformBundleDefines(undefined)['global.isIOS']).toBe('false');
+	});
+});
+
+// ── webpack5 capability parity ───────────────────────────────────────────────
+
+describe('webpack5 capability parity', () => {
+	it('platformCapabilities matches the built-in descriptors', () => {
+		for (const name of ['ios', 'android', 'visionos'] as const) {
+			expect(platformCapabilities[name]).toEqual(builtinPlatforms[name].capabilities);
+		}
+	});
+});
+
+// ── end-to-end: a real Vite build resolves the provider tree ─────────────────
+
+describe('platformProviderPlugin under a real Vite build', () => {
+	const APP_ROOT = join(here, 'fixtures', 'build-app');
+
+	// build.lib is the reliable programmatic path under rolldown-vite: a bare
+	// rollupOptions.input + format build emits an empty chunk here.
+	const buildApp = async (entry: string) => {
+		const outDir = mkdtempSync(join(tmpdir(), 'ns-platform-build-'));
+		await build({
+			root: APP_ROOT,
+			configFile: false,
+			logLevel: 'silent',
+			plugins: [platformProviderPlugin({ platform: testos, coreRoot: CORE_ROOT })],
+			resolve: {
+				alias: [{ find: '@nativescript/core', replacement: CORE_ROOT }],
+				extensions: getPlatformExtensions(testos),
+			},
+			define: getPlatformBundleDefines(testos),
+			optimizeDeps: { noDiscovery: true, include: [] },
+			build: {
+				outDir,
+				emptyOutDir: true,
+				minify: false,
+				target: 'esnext',
+				lib: { entry: join(APP_ROOT, entry), formats: ['es'], fileName: 'entry' },
+			},
+		});
+		return (readdirSync(outDir, { recursive: true }) as string[])
+			.filter((f) => f.endsWith('.mjs') || f.endsWith('.js'))
+			.map((f) => readFileSync(join(outDir, f), 'utf8'))
+			.join('\n');
+	};
+
+	it('bundles provider, reuse, shared, and self-referencing modules with substituted defines', async () => {
+		const code = await buildApp('entry.ts');
+
+		// Provider-shadowed module, reuse-mapped module, shared module whose
+		// relative import inside core hit the provider, and a provider module
+		// extending the core module it shadows — all present.
+		expect(code).toContain('PROVIDER_LABEL');
+		expect(code).toContain('CORE_TIMER_IOS');
+		expect(code).toContain('CORE_GLOBALS');
+		expect(code).toContain('PROVIDER_DEP');
+		expect(code).toContain('CORE_EXTENDED');
+		expect(code).toContain('PROVIDER_EXTENDED');
+
+		// The capability define substituted to a constant — no __NS_CAP__
+		// identifier may survive into the bundle.
+		expect(code).not.toContain('__NS_CAP__');
+		expect(code).toMatch(/capValue\s*=\s*true/);
+	});
+
+	it('rejects the build when a module has no implementation for the platform', async () => {
+		await expect(buildApp('entry-missing.ts')).rejects.toThrowError(/@nativescript\/core module "no-such-module" has no implementation for platform "testos"/);
 	});
 });

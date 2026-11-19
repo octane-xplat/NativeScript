@@ -1,1 +1,1 @@
-export const coreExtended = true;
+export const coreExtended = 'CORE_EXTENDED';

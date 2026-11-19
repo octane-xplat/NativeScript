@@ -1,1 +1,1 @@
-export const sharedLabel = true;
+export const sharedLabel = 'CORE_LABEL';

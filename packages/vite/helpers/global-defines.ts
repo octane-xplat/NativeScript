@@ -1,6 +1,6 @@
 import { getProjectAppPath, getProjectAppVirtualPath } from './utils.js';
 import { getClientStrategyDevicePath } from '../hmr/framework-flavors.js';
-import { getPlatform, getPlatformDefineValues, type NativeScriptPlatform } from './platforms.js';
+import { getPlatform, getPlatformBundleDefines, getPlatformDefineValues, type NativeScriptPlatform } from './platforms.js';
 
 const APP_ROOT_DIR = getProjectAppPath();
 const APP_ROOT_VIRTUAL = getProjectAppVirtualPath();
@@ -244,17 +244,10 @@ export function buildUserDefineShimStatements(excludeKeys: Iterable<string> = []
 export function getGlobalDefines(opts: { platform: string; platforms?: NativeScriptPlatform[]; targetMode: string; verbose: boolean; flavor: string; isCI?: boolean }) {
 	const values = getRuntimeDefineValues({ platform: opts.platform, platforms: opts.platforms, isDevMode: opts.targetMode === 'development', verbose: opts.verbose });
 	return {
-		// Define platform flags for runtime checks
-		__ANDROID__: JSON.stringify(values.__ANDROID__),
-		__IOS__: JSON.stringify(values.__IOS__),
-		__VISIONOS__: JSON.stringify(values.__VISIONOS__),
-		__APPLE__: JSON.stringify(values.__APPLE__),
-		// One define per declared capability so `__NS_CAP__.<cap>` substitutes
-		// to a constant in bundles; the bare object covers whole-object reads.
-		...Object.fromEntries(Object.entries(values.__NS_CAP__).map(([cap, value]) => [`__NS_CAP__.${cap}`, JSON.stringify(value)])),
-		__NS_CAP__: JSON.stringify(values.__NS_CAP__),
-		'global.isAndroid': JSON.stringify(values.__ANDROID__),
-		'global.isIOS': JSON.stringify(values.__IOS__ || values.__VISIONOS__),
+		// Platform flags, per-capability `__NS_CAP__.<cap>` defines, the bare
+		// `__NS_CAP__` object, and the legacy `global.is*` members — the same
+		// entries getPlatformBundleDefines emits for standalone configs.
+		...getPlatformBundleDefines(getPlatform(opts.platform, opts.platforms)),
 		__DEV__: JSON.stringify(values.__DEV__),
 		__COMMONJS__: values.__COMMONJS__,
 		__NS_WEBPACK__: values.__NS_WEBPACK__,

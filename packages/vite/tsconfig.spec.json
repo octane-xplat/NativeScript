@@ -7,5 +7,6 @@
 		"allowJs": true,
 		"types": ["vitest/globals", "vitest/importMeta", "vite/client", "node", "vitest"]
 	},
-	"include": ["vitest.config.ts", "**/*.test.ts", "**/*.spec.ts", "**/*.ts"]
+	"include": ["vitest.config.ts", "**/*.test.ts", "**/*.spec.ts", "**/*.ts"],
+	"exclude": ["helpers/fixtures"]
 }

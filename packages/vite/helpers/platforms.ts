@@ -55,19 +55,20 @@ export type BuiltinPlatformName = 'ios' | 'android' | 'visionos';
  * Shared-code behavior flags converted from platform-name checks to
  * `__NS_CAP__.*` capability reads. Values per platform must equal the
  * expression they replace:
- *  - `textAffectsLayout` replaces `__APPLE__` in text/style property metadata.
- *  - `viewPropertyAffectsLayout` replaces `__APPLE__` in view/layout property metadata.
- *  - `textChangeAffectsLayout` replaces `__ANDROID__` in the `text` property metadata.
+ *  - `propertyChangesRequestLayout` replaces `affectsLayout: __APPLE__` (and
+ *    the matching `if (__APPLE__) view.requestLayout()` guards) in property
+ *    metadata — "Core drives native layout in JS, so a change must request a
+ *    layout pass".
+ *  - `textChangeAffectsLayout` replaces `affectsLayout: __ANDROID__` in the
+ *    `text` property metadata.
  */
 const appleCapabilities: Record<string, boolean> = {
-	textAffectsLayout: true,
-	viewPropertyAffectsLayout: true,
+	propertyChangesRequestLayout: true,
 	textChangeAffectsLayout: false,
 };
 
 const androidCapabilities: Record<string, boolean> = {
-	textAffectsLayout: false,
-	viewPropertyAffectsLayout: false,
+	propertyChangesRequestLayout: false,
 	textChangeAffectsLayout: true,
 };
 
@@ -154,12 +155,37 @@ export function getPlatformDefineValues(platform: NativeScriptPlatform | undefin
 	};
 }
 
+/**
+ * The platform subset of the Vite `define` map, as string values ready for
+ * `config.define`: the four platform flags, one dotted `__NS_CAP__.<cap>`
+ * entry per capability, the bare `__NS_CAP__` object, and the legacy
+ * `global.isAndroid` / `global.isIOS` members (`isIOS` is
+ * `__IOS__ || __VISIONOS__`, matching core/platform/common.ts).
+ *
+ * Vite configs that do not use `baseConfig` (external-platform apps with
+ * their own pipeline) call this instead of re-deriving the map.
+ */
+export function getPlatformBundleDefines(platform: NativeScriptPlatform | undefined): Record<string, string> {
+	const values = getPlatformDefineValues(platform);
+	return {
+		__ANDROID__: JSON.stringify(values.__ANDROID__),
+		__IOS__: JSON.stringify(values.__IOS__),
+		__VISIONOS__: JSON.stringify(values.__VISIONOS__),
+		__APPLE__: JSON.stringify(values.__APPLE__),
+		...Object.fromEntries(Object.entries(values.capabilities).map(([cap, value]) => [`__NS_CAP__.${cap}`, JSON.stringify(value)])),
+		__NS_CAP__: JSON.stringify(values.capabilities),
+		'global.isAndroid': JSON.stringify(values.__ANDROID__),
+		'global.isIOS': JSON.stringify(values.__IOS__ || values.__VISIONOS__),
+	};
+}
+
 const CORE_PACKAGE_ID = '@nativescript/core';
 const PROVIDER_EXTENSIONS = ['.ts', '.js'] as const;
-// Suffixes that always mean "an existing platform implementation file" when
-// they appear at the end of an import specifier, regardless of the active
-// platform — a core file importing `./helper.ios` means that file.
-const KNOWN_PLATFORM_SUFFIXES = ['.ios', '.android', '.visionos', '.windows', '.macos'];
+const SCRIPT_EXTENSIONS = ['.tsx', '.jsx', '.ts', '.js', '.mjs'] as const;
+// Suffixes that mean "an existing platform implementation file" when they end
+// an import specifier — derived from the registered platforms (built-ins
+// plus the active platform's own suffixes), never a hard-coded list.
+const BUILTIN_SUFFIXES = [...new Set(Object.values(builtinPlatforms).flatMap((platform) => platform.suffixes))];
 
 function isFile(file: string): boolean {
 	try {
@@ -185,8 +211,12 @@ function isDirectory(dir: string): boolean {
  * For an import whose target lies inside `coreRoot` — a relative import from
  * a core (or provider) file, a bare `@nativescript/core/<path>` specifier, or
  * an already-aliased absolute path — the core module id is the path relative
- * to coreRoot without extension or platform suffix (`ui/label`, directories
- * becoming `<dir>/index`). Resolution order per module id:
+ * to coreRoot without extension (`ui/label`, directories becoming
+ * `<dir>/index`). Two kinds of specifier pass through untouched before any
+ * resolution runs: non-script imports (`.json`, `.css`, `.xml`, assets) and
+ * imports that explicitly name a platform file (`./dep.ios`, `foo.testos.ts`)
+ * — a suffix in the specifier is part of the name, not a resolution hint.
+ * Resolution order per module id:
  *   1. `<provider.root>/<id><suffix>.{ts,js}` for each platform suffix —
  *      skipped when the importer IS the provider file for that id, so a
  *      provider module can extend the core module it shadows;
@@ -207,6 +237,9 @@ export function platformProviderPlugin(opts: { platform: NativeScriptPlatform | 
 	const providerRoot = platform?.provider ? normalizeModuleId(path.resolve(platform.provider.root)) : undefined;
 	const reuse = platform?.reuse ?? {};
 	const suffixes = platform?.suffixes ?? [];
+	// Suffixes that mark an explicit platform-file import for this build:
+	// every built-in plus this platform's own.
+	const platformSuffixes = [...new Set([...BUILTIN_SUFFIXES, ...suffixes])];
 	const enabled = !!providerRoot || Object.keys(reuse).length > 0;
 	const cache = new Map<string, string | null>();
 
@@ -245,7 +278,9 @@ export function platformProviderPlugin(opts: { platform: NativeScriptPlatform | 
 				return null;
 			}
 
-			const cacheKey = `${importer ?? ''}${source}`;
+			// '\0' separates importer and source — it cannot appear in either,
+			// so keys for ("a","bc") and ("ab","c") can never collide.
+			const cacheKey = `${importer ?? ''}\0${source}`;
 			if (cache.has(cacheKey)) {
 				return cache.get(cacheKey) ?? null;
 			}
@@ -254,9 +289,18 @@ export function platformProviderPlugin(opts: { platform: NativeScriptPlatform | 
 				return result;
 			};
 
+			const cleanSource = source.split('?', 1)[0];
+
+			// Anything that is not a script file (`.json`, `.css`, `.scss`,
+			// `.xml`, assets, …) is outside this resolver's scope — pass through
+			// silently, never error.
+			const sourceExt = path.posix.extname(normalizeModuleId(cleanSource));
+			if (sourceExt && !(SCRIPT_EXTENSIONS as readonly string[]).includes(sourceExt)) {
+				return done(null);
+			}
+
 			// Locate the import target relative to coreRoot.
 			let rel: string | undefined;
-			const cleanSource = source.split('?', 1)[0];
 			if (cleanSource === CORE_PACKAGE_ID) {
 				rel = 'index';
 			} else if (cleanSource.startsWith(`${CORE_PACKAGE_ID}/`)) {
@@ -282,15 +326,14 @@ export function platformProviderPlugin(opts: { platform: NativeScriptPlatform | 
 				return done(null);
 			}
 
-			// Normalize to the core module id: strip a known extension and any
-			// platform suffix the specifier already carries.
+			// Normalize to the core module id: strip the script extension.
 			rel = rel.replace(/\\/g, '/');
 			rel = rel.replace(/\.(tsx|jsx|ts|js|mjs)$/, '');
-			for (const suffix of [...suffixes, ...KNOWN_PLATFORM_SUFFIXES]) {
-				if (rel.endsWith(suffix)) {
-					rel = rel.slice(0, -suffix.length);
-					break;
-				}
+			// An import that explicitly names a platform file — a built-in
+			// suffix or one of the active platform's — already knows which file
+			// it wants. Never rewrite it; normal resolution picks the file up.
+			if (platformSuffixes.some((suffix) => rel.endsWith(suffix))) {
+				return done(null);
 			}
 			if (!rel) {
 				return done(null);

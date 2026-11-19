@@ -1,0 +1,1 @@
+export { sharedDep } from './dep';

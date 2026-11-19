@@ -1,1 +1,1 @@
-export const sharedGlobals = true;
+export const sharedGlobals = 'CORE_GLOBALS';
