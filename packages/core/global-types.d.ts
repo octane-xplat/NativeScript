@@ -150,10 +150,8 @@ declare const __APPLE__: boolean;
  * assumptions.
  */
 declare const __NS_CAP__: {
-	/** Style/text property changes request a layout pass (was `__APPLE__`). */
-	textAffectsLayout: boolean;
-	/** View/layout property changes request a layout pass (was `__APPLE__`). */
-	viewPropertyAffectsLayout: boolean;
+	/** A property/style change must request a layout pass — Core drives native layout in JS (was `affectsLayout: __APPLE__`). */
+	propertyChangesRequestLayout: boolean;
 	/** `text`/`formattedText` content changes request a layout pass (was `__ANDROID__`). */
 	textChangeAffectsLayout: boolean;
 } & Record<string, boolean>;

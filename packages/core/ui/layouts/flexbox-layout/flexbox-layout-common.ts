@@ -245,7 +245,7 @@ export const flexDirectionProperty = new CssProperty<Style, FlexDirection>({
 	name: 'flexDirection',
 	cssName: 'flex-direction',
 	defaultValue: FlexDirection.ROW,
-	affectsLayout: __NS_CAP__.viewPropertyAffectsLayout,
+	affectsLayout: __NS_CAP__.propertyChangesRequestLayout,
 	valueConverter: FlexDirection.parse,
 });
 flexDirectionProperty.register(Style);
@@ -254,7 +254,7 @@ export const flexWrapProperty = new CssProperty<Style, FlexWrap>({
 	name: 'flexWrap',
 	cssName: 'flex-wrap',
 	defaultValue: 'nowrap',
-	affectsLayout: __NS_CAP__.viewPropertyAffectsLayout,
+	affectsLayout: __NS_CAP__.propertyChangesRequestLayout,
 	valueConverter: FlexWrap.parse,
 });
 flexWrapProperty.register(Style);
@@ -263,7 +263,7 @@ export const justifyContentProperty = new CssProperty<Style, JustifyContent>({
 	name: 'justifyContent',
 	cssName: 'justify-content',
 	defaultValue: JustifyContent.FLEX_START,
-	affectsLayout: __NS_CAP__.viewPropertyAffectsLayout,
+	affectsLayout: __NS_CAP__.propertyChangesRequestLayout,
 	valueConverter: JustifyContent.parse,
 });
 justifyContentProperty.register(Style);
@@ -272,7 +272,7 @@ export const alignItemsProperty = new CssProperty<Style, AlignItems>({
 	name: 'alignItems',
 	cssName: 'align-items',
 	defaultValue: AlignItems.STRETCH,
-	affectsLayout: __NS_CAP__.viewPropertyAffectsLayout,
+	affectsLayout: __NS_CAP__.propertyChangesRequestLayout,
 	valueConverter: AlignItems.parse,
 });
 alignItemsProperty.register(Style);
@@ -281,7 +281,7 @@ export const alignContentProperty = new CssProperty<Style, AlignContent>({
 	name: 'alignContent',
 	cssName: 'align-content',
 	defaultValue: AlignContent.STRETCH,
-	affectsLayout: __NS_CAP__.viewPropertyAffectsLayout,
+	affectsLayout: __NS_CAP__.propertyChangesRequestLayout,
 	valueConverter: AlignContent.parse,
 });
 alignContentProperty.register(Style);

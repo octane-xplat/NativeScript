@@ -53,7 +53,7 @@ dockProperty.register(View);
 export const stretchLastChildProperty = new Property<DockLayoutBase, boolean>({
 	name: 'stretchLastChild',
 	defaultValue: true,
-	affectsLayout: __NS_CAP__.viewPropertyAffectsLayout,
+	affectsLayout: __NS_CAP__.propertyChangesRequestLayout,
 	valueConverter: booleanConverter,
 });
 stretchLastChildProperty.register(DockLayoutBase);

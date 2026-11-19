@@ -15,8 +15,7 @@ global.__VISIONOS__ = false;
 global.__APPLE__ = true;
 // Capability values matching the iOS defaults the bundler emits (tests run as iOS).
 global.__NS_CAP__ = {
-	textAffectsLayout: true,
-	viewPropertyAffectsLayout: true,
+	propertyChangesRequestLayout: true,
 	textChangeAffectsLayout: false,
 };
 global.__COMMONJS__ = false;
