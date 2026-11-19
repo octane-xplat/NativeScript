@@ -32,6 +32,7 @@ import {
 	getEntryDirPath,
 	getEntryPath,
 } from '../helpers/platform';
+import { getPlatformCapabilityDefines } from '../helpers/platform-capabilities';
 
 export default function (config: Config, env: IWebpackEnv = _env): Config {
 	const entryPath = getEntryPath();
@@ -662,6 +663,9 @@ export default function (config: Config, env: IWebpackEnv = _env): Config {
 				__IOS__: platform === 'ios',
 				__VISIONOS__: platform === 'visionos',
 				__APPLE__: platform === 'ios' || platform === 'visionos',
+				// Behavior capabilities shared core code branches on via
+				// `__NS_CAP__.*` — see helpers/platform-capabilities.ts.
+				...getPlatformCapabilityDefines(platform),
 				/* for compat only */ 'global.isAndroid': platform === 'android',
 				/* for compat only */ 'global.isIOS':
 					platform === 'ios' || platform === 'visionos',

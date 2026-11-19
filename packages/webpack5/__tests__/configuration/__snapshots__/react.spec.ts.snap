@@ -326,6 +326,12 @@ exports[`react configuration > android > adds ReactRefreshWebpackPlugin when HMR
         __IOS__: false,
         __VISIONOS__: false,
         __APPLE__: false,
+        '__NS_CAP__.propertyChangesRequestLayout': false,
+        '__NS_CAP__.textChangeAffectsLayout': true,
+        __NS_CAP__: {
+          propertyChangesRequestLayout: false,
+          textChangeAffectsLayout: true
+        },
         'global.isAndroid': true,
         'global.isIOS': false,
         'global.isVisionOS': false,
@@ -700,6 +706,12 @@ exports[`react configuration > android > base config 1`] = `
         __IOS__: false,
         __VISIONOS__: false,
         __APPLE__: false,
+        '__NS_CAP__.propertyChangesRequestLayout': false,
+        '__NS_CAP__.textChangeAffectsLayout': true,
+        __NS_CAP__: {
+          propertyChangesRequestLayout: false,
+          textChangeAffectsLayout: true
+        },
         'global.isAndroid': true,
         'global.isIOS': false,
         'global.isVisionOS': false,
@@ -1083,6 +1095,12 @@ exports[`react configuration > ios > adds ReactRefreshWebpackPlugin when HMR ena
         __IOS__: true,
         __VISIONOS__: false,
         __APPLE__: true,
+        '__NS_CAP__.propertyChangesRequestLayout': true,
+        '__NS_CAP__.textChangeAffectsLayout': false,
+        __NS_CAP__: {
+          propertyChangesRequestLayout: true,
+          textChangeAffectsLayout: false
+        },
         'global.isAndroid': false,
         'global.isIOS': true,
         'global.isVisionOS': false,
@@ -1458,6 +1476,12 @@ exports[`react configuration > ios > base config 1`] = `
         __IOS__: true,
         __VISIONOS__: false,
         __APPLE__: true,
+        '__NS_CAP__.propertyChangesRequestLayout': true,
+        '__NS_CAP__.textChangeAffectsLayout': false,
+        __NS_CAP__: {
+          propertyChangesRequestLayout: true,
+          textChangeAffectsLayout: false
+        },
         'global.isAndroid': false,
         'global.isIOS': true,
         'global.isVisionOS': false,
